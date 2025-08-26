@@ -16,42 +16,44 @@ const wss = new WebSocketServer({ noServer: true });
 console.log("Signaling server starting...");
 
 wss.on("connection", (ws) => {
-  // Assign roles based on connection order
-  if (!broadcasterSocket) {
-    broadcasterSocket = ws;
-    ws.role = "broadcaster";
-    console.log("Broadcaster connected.");
-  } else if (!viewerSocket) {
-    viewerSocket = ws;
-    ws.role = "viewer";
-    console.log("Viewer connected.");
-  } else {
-    // If a third client tries to connect, reject it.
-    console.log("Connection rejected: Server is full.");
-    ws.close(1013, "Server is full. Please try again later.");
-    return;
-  }
+  ws.role = null;
 
   // Handle incoming messages by simply relaying them to the other party.
   ws.on("message", (message) => {
     const data = JSON.parse(message.toString());
+    
+    // Handle role assignment
+    if (!ws.role && data.type === "role") {
+      if (data.role === "broadcaster") {
+        if (broadcasterSocket) {
+          ws.close(1013, "Broadcaster already connected.");
+          return;
+        }
+        ws.role = "broadcaster";
+        broadcasterSocket = ws;
+        console.log("Broadcaster connected.");
+      } else if (data.role === "viewer") {
+        if (viewerSocket) {
+          ws.close(1013, "Viewer already connected.");
+          return;
+        }
+        ws.role = "viewer";
+        viewerSocket = ws;
+        console.log("Viewer connected.");
+      } else {
+        ws.close(1008, "Unknown role.");
+        return;
+      }
+      return;
+    }
+
     console.log(`Received message of type '${data.type}' from ${ws.role}`);
 
-    // Forward message to the other connected client
-    if (ws.role === "broadcaster") {
-      if (viewerSocket) {
-        console.log("Forwarding message from broadcaster to viewer.");
-        viewerSocket.send(message.toString());
-      } else {
-        console.log("Broadcaster sent a message, but no viewer is connected.");
-      }
-    } else if (ws.role === "viewer") {
-      if (broadcasterSocket) {
-        console.log("Forwarding message from viewer to broadcaster.");
-        broadcasterSocket.send(message.toString());
-      } else {
-        console.log("Viewer sent a message, but no broadcaster is connected.");
-      }
+    // Relay signaling messages
+    if (ws.role === "broadcaster" && viewerSocket) {
+      viewerSocket.send(message.toString());
+    } else if (ws.role === "viewer" && broadcasterSocket) {
+      broadcasterSocket.send(message.toString());
     }
   });
 
