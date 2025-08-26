@@ -1,5 +1,5 @@
 // server.js
-import express from "express";
+import express from "express"
 import { WebSocketServer } from "ws";
 
 const app = express();
